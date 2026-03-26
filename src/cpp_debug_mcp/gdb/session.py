@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import shutil
+import subprocess
 import time
 import uuid
 
@@ -19,6 +21,7 @@ class GdbSessionManager:
     def __init__(self, max_sessions: int = MAX_SESSIONS):
         self._sessions: dict[str, GdbMiController] = {}
         self._last_activity: dict[str, float] = {}
+        self._consoles: dict[str, str] = {}  # session_id -> tmux session name
         self._max_sessions = max_sessions
 
     async def create_session(
@@ -52,8 +55,69 @@ class GdbSessionManager:
         self._last_activity[session_id] = time.time()
         return self._sessions[session_id]
 
+    async def open_console(self, session_id: str) -> str:
+        """Open an interactive GDB console for a session via tmux.
+
+        Creates a tmux session and attaches GDB's `new-ui console` to its PTY,
+        allowing a programmer to interact with the same GDB session from their
+        terminal.
+
+        Returns instructions for connecting.
+        """
+        if not shutil.which("tmux"):
+            raise GdbError("tmux is required for interactive console. Install it with: apt install tmux")
+
+        if session_id in self._consoles:
+            tmux_name = self._consoles[session_id]
+            return (
+                f"Console already open for session {session_id}.\n"
+                f"Connect with:\n  tmux attach -t {tmux_name}"
+            )
+
+        ctrl = self.get_session(session_id)
+
+        tmux_name = f"gdb-{session_id}"
+
+        # Create a tmux session (detached, with a shell that stays open)
+        subprocess.run(
+            ["tmux", "new-session", "-d", "-s", tmux_name],
+            check=True,
+        )
+
+        # Get the PTY device of the tmux pane
+        result = subprocess.run(
+            ["tmux", "display-message", "-t", tmux_name, "-p", "#{pane_tty}"],
+            capture_output=True, text=True, check=True,
+        )
+        pane_tty = result.stdout.strip()
+
+        if not pane_tty:
+            subprocess.run(["tmux", "kill-session", "-t", tmux_name], check=False)
+            raise GdbError("Failed to get tmux pane TTY")
+
+        # Tell GDB to create a new console UI on that PTY
+        await ctrl.send_command(f"new-ui console {pane_tty}")
+
+        self._consoles[session_id] = tmux_name
+
+        return tmux_name
+
+    def get_console(self, session_id: str) -> str | None:
+        """Get the tmux session name for a console, if open."""
+        return self._consoles.get(session_id)
+
+    async def close_console(self, session_id: str) -> None:
+        """Close the interactive console for a session."""
+        tmux_name = self._consoles.pop(session_id, None)
+        if tmux_name:
+            subprocess.run(
+                ["tmux", "kill-session", "-t", tmux_name],
+                check=False,
+            )
+
     async def destroy_session(self, session_id: str) -> None:
         """End and clean up a specific session."""
+        await self.close_console(session_id)
         controller = self._sessions.pop(session_id, None)
         self._last_activity.pop(session_id, None)
         if controller:

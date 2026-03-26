@@ -351,3 +351,45 @@ def register_gdb_tools(mcp):
         ctrl = manager.get_session(session_id)
         responses = await ctrl.send_raw_command(command)
         return _raw_fmt(ctrl, responses)
+
+    @mcp.tool()
+    async def gdb_open_console(session_id: str, ctx: Context = None) -> str:
+        """Open an interactive GDB console so the programmer can step through code themselves.
+
+        Creates a tmux session with a full GDB console attached to the same
+        debug session. Both Claude (via MCP tools) and the programmer (via the
+        console) can control GDB simultaneously.
+
+        Requires tmux to be installed.
+
+        Args:
+            session_id: The session identifier.
+        """
+        manager = ctx.request_context.lifespan_context["gdb"]
+        tmux_name = await manager.open_console(session_id)
+        return (
+            f"── Interactive GDB Console ──\n"
+            f"  Session: {session_id}\n"
+            f"  tmux session: {tmux_name}\n"
+            f"\n"
+            f"  Connect from your terminal:\n"
+            f"    tmux attach -t {tmux_name}\n"
+            f"\n"
+            f"  You can type GDB commands directly (e.g. next, print x, bt).\n"
+            f"  Both you and Claude share the same debug session.\n"
+            f"  Detach with: Ctrl-b d"
+        )
+
+    @mcp.tool()
+    async def gdb_close_console(session_id: str, ctx: Context = None) -> str:
+        """Close the interactive GDB console for a session.
+
+        Args:
+            session_id: The session identifier.
+        """
+        manager = ctx.request_context.lifespan_context["gdb"]
+        tmux_name = manager.get_console(session_id)
+        if not tmux_name:
+            return f"No console open for session {session_id}."
+        await manager.close_console(session_id)
+        return f"Console closed for session {session_id} (tmux session {tmux_name} terminated)."
