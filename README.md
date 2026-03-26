@@ -9,61 +9,81 @@ A [Claude Code](https://claude.ai/code) MCP server plugin for C++ debugging. Int
 - [clangd](https://clangd.llvm.org/) (for static analysis tools)
 - [uv](https://github.com/astral-sh/uv) (recommended) or pip
 
-## Installation
+## Quick Start
 
-**From PyPI** (once published):
+Register the MCP server globally (all projects, auto-updates):
+
+```bash
+claude mcp add --scope user cpp-debug -- uvx cpp-debug-mcp
+```
+
+That's it. Verify with `/mcp` inside Claude Code to confirm the server is connected.
+
+## Installation Options
+
+### Auto-updating via uvx (recommended)
+
+No install step needed — `uvx` fetches the latest version from PyPI on each invocation. Just register with the command above.
+
+### From PyPI
 
 ```bash
 pip install cpp-debug-mcp
 ```
 
-**From GitHub** (always available):
+### From GitHub
 
 ```bash
 pip install git+https://github.com/William-An/cpp-debug-mcp.git
 ```
 
-**From source** (for development):
+### From source (for development)
 
 ```bash
 git clone https://github.com/William-An/cpp-debug-mcp.git
 cd cpp-debug-mcp
 uv venv .venv
 source .venv/bin/activate
-uv pip install -e .
+uv pip install -e ".[dev]"
 ```
 
 ## Register with Claude Code
 
-**Option A** — CLI command:
+### Global (all projects)
 
 ```bash
-claude mcp add cpp-debug -- python3 -m cpp_debug_mcp
+claude mcp add --scope user cpp-debug -- uvx cpp-debug-mcp
 ```
 
-**Option B** — add to your project's `.mcp.json`:
+### Per-project (CLI)
+
+```bash
+claude mcp add cpp-debug -- uvx cpp-debug-mcp
+```
+
+### Per-project (.mcp.json)
 
 ```json
 {
   "mcpServers": {
     "cpp-debug": {
       "type": "stdio",
-      "command": "python3",
-      "args": ["-m", "cpp_debug_mcp"],
-      "env": {
-        "GDB_PATH": "gdb",
-        "CLANGD_PATH": "clangd"
-      }
+      "command": "uvx",
+      "args": ["cpp-debug-mcp"]
     }
   }
 }
 ```
 
-Verify with `/mcp` inside Claude Code to confirm the server is connected.
+| Scope | Flag | Config file | Availability |
+|---|---|---|---|
+| **User** | `--scope user` | `~/.claude.json` | All projects, private to you |
+| **Project** | `--scope project` | `.mcp.json` | This project, shared via git |
+| **Local** | *(default)* | `.mcp.json` | This project, private to you |
 
 ## Tools
 
-### GDB Tools (14)
+### GDB Tools (16)
 
 | Tool | Description |
 |---|---|
@@ -81,6 +101,8 @@ Verify with `/mcp` inside Claude Code to confirm the server is connected.
 | `gdb_read_memory` | Read raw memory at an address |
 | `gdb_thread_info` | List all threads and their states |
 | `gdb_raw_command` | Execute a raw GDB command (with safety restrictions) |
+| `gdb_open_console` | Open an interactive GDB console via tmux (requires tmux) |
+| `gdb_close_console` | Close the interactive GDB console |
 
 ### LSP/clangd Tools (8)
 
@@ -133,7 +155,8 @@ src/cpp_debug_mcp/
 ├── analysis/
 │   └── correlator.py      # Cross-references GDB runtime + LSP static info
 └── tools/
-    ├── gdb_tools.py       # 14 GDB MCP tools
+    ├── fmt.py             # Human-readable output formatting
+    ├── gdb_tools.py       # 16 GDB MCP tools (incl. interactive console)
     ├── lsp_tools.py       # 8 LSP MCP tools
     └── combined_tools.py  # 3 combined analysis tools
 ```
