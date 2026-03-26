@@ -11,6 +11,20 @@ A [Claude Code](https://claude.ai/code) MCP server plugin for C++ debugging. Int
 
 ## Installation
 
+**From PyPI** (once published):
+
+```bash
+pip install cpp-debug-mcp
+```
+
+**From GitHub** (always available):
+
+```bash
+pip install git+https://github.com/William-An/cpp-debug-mcp.git
+```
+
+**From source** (for development):
+
 ```bash
 git clone https://github.com/William-An/cpp-debug-mcp.git
 cd cpp-debug-mcp
