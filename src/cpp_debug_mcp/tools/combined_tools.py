@@ -1,7 +1,5 @@
 """Combined GDB + LSP MCP tool definitions."""
 
-import json
-
 from fastmcp import Context
 
 from ..analysis.correlator import (
@@ -9,6 +7,7 @@ from ..analysis.correlator import (
     get_variable_info,
     analyze_function_info,
 )
+from . import fmt
 
 
 def register_combined_tools(mcp):
@@ -46,7 +45,7 @@ def register_combined_tools(mcp):
             gdb_ctrl, lsp_client, opened_files,
             variable_name, file_path, line,
         )
-        return json.dumps(result, indent=2)
+        return fmt.fmt_variable_info(result)
 
     @mcp.tool()
     async def diagnose_crash_site(
@@ -78,7 +77,7 @@ def register_combined_tools(mcp):
         report = await get_crash_report(
             gdb_ctrl, lsp_client, opened_files, max_frames,
         )
-        return json.dumps(report, indent=2)
+        return fmt.fmt_crash_report(report)
 
     @mcp.tool()
     async def analyze_function(
@@ -108,4 +107,4 @@ def register_combined_tools(mcp):
         result = await analyze_function_info(
             gdb_ctrl, lsp_client, opened_files, function_name,
         )
-        return json.dumps(result, indent=2)
+        return fmt.fmt_function_analysis(result)

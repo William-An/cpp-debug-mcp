@@ -1,6 +1,5 @@
 """LSP/clangd MCP tool definitions."""
 
-import json
 from pathlib import Path
 
 from fastmcp import Context
@@ -15,6 +14,7 @@ from ..lsp.protocol import (
     parse_location,
     parse_document_symbol,
 )
+from . import fmt
 
 
 async def _ensure_file_open(session_id: str, file_path: str, ctx: Context) -> None:
@@ -29,7 +29,7 @@ async def _ensure_file_open(session_id: str, file_path: str, ctx: Context) -> No
         if file_path.endswith(".c"):
             lang = "c"
         elif file_path.endswith(".h"):
-            lang = "c"  # could be c or cpp, default c
+            lang = "c"
         await client.send_notification(
             "textDocument/didOpen",
             make_did_open(file_path, content, lang),
@@ -56,10 +56,7 @@ def register_lsp_tools(mcp):
         session_id, capabilities = await manager.create_session(
             project_root, compile_commands_dir
         )
-        return json.dumps({
-            "session_id": session_id,
-            "status": "started",
-        })
+        return fmt.fmt_session_start("LSP/clangd", session_id)
 
     @mcp.tool()
     async def lsp_end_session(session_id: str, ctx: Context = None) -> str:
@@ -70,7 +67,7 @@ def register_lsp_tools(mcp):
         """
         manager = ctx.request_context.lifespan_context["lsp"]
         await manager.destroy_session(session_id)
-        return json.dumps({"session_id": session_id, "status": "ended"})
+        return fmt.fmt_session_end("LSP/clangd", session_id)
 
     @mcp.tool()
     async def lsp_diagnostics(
@@ -89,7 +86,6 @@ def register_lsp_tools(mcp):
 
         await _ensure_file_open(session_id, file_path, ctx)
 
-        # Wait for diagnostics notification
         notif = await client.wait_for_notification(
             "textDocument/publishDiagnostics", timeout=15.0
         )
@@ -99,8 +95,8 @@ def register_lsp_tools(mcp):
                 parse_diagnostic(d, file_path).to_dict()
                 for d in notif["diagnostics"]
             ]
-            return json.dumps(diagnostics, indent=2)
-        return json.dumps([])
+            return fmt.fmt_diagnostics(diagnostics)
+        return fmt.fmt_diagnostics([])
 
     @mcp.tool()
     async def lsp_hover(
@@ -130,8 +126,8 @@ def register_lsp_tools(mcp):
 
         hover = parse_hover(result)
         if hover:
-            return json.dumps(hover.to_dict())
-        return json.dumps({"contents": "", "language": ""})
+            return fmt.fmt_hover(hover.to_dict())
+        return "No hover information."
 
     @mcp.tool()
     async def lsp_goto_definition(
@@ -161,10 +157,10 @@ def register_lsp_tools(mcp):
 
         if isinstance(result, list):
             locations = [parse_location(loc).to_dict() for loc in result]
-            return json.dumps(locations, indent=2)
+            return fmt.fmt_locations(locations, "Definition")
         elif isinstance(result, dict) and "uri" in result:
-            return json.dumps([parse_location(result).to_dict()], indent=2)
-        return json.dumps([])
+            return fmt.fmt_locations([parse_location(result).to_dict()], "Definition")
+        return "No definition found."
 
     @mcp.tool()
     async def lsp_find_references(
@@ -194,8 +190,8 @@ def register_lsp_tools(mcp):
 
         if isinstance(result, list):
             locations = [parse_location(loc).to_dict() for loc in result]
-            return json.dumps(locations, indent=2)
-        return json.dumps([])
+            return fmt.fmt_locations(locations, "References")
+        return "No references found."
 
     @mcp.tool()
     async def lsp_document_symbols(
@@ -221,8 +217,8 @@ def register_lsp_tools(mcp):
 
         if isinstance(result, list):
             symbols = [parse_document_symbol(s).to_dict() for s in result]
-            return json.dumps(symbols, indent=2)
-        return json.dumps([])
+            return fmt.fmt_symbols(symbols)
+        return "No symbols found."
 
     @mcp.tool()
     async def lsp_signature_help(
@@ -261,9 +257,9 @@ def register_lsp_tools(mcp):
                         for p in sig.get("parameters", [])
                     ],
                 })
-            return json.dumps({
+            return fmt.fmt_signature_help({
                 "signatures": signatures,
                 "active_signature": result.get("activeSignature", 0),
                 "active_parameter": result.get("activeParameter", 0),
-            }, indent=2)
-        return json.dumps({"signatures": []})
+            })
+        return "No signature information."

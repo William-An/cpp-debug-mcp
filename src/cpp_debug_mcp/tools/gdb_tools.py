@@ -1,14 +1,10 @@
 """GDB MCP tool definitions."""
 
-import json
 from typing import Any
 
 from fastmcp import Context
 
-
-def _fmt(controller, responses: list[dict[str, Any]]) -> str:
-    """Format GDB MI responses into readable text."""
-    return controller.format(responses)
+from . import fmt
 
 
 def _payload(responses: list[dict[str, Any]]) -> dict | str | None:
@@ -17,6 +13,11 @@ def _payload(responses: list[dict[str, Any]]) -> dict | str | None:
         if r.get("type") == "result":
             return r.get("payload")
     return None
+
+
+def _raw_fmt(controller, responses: list[dict[str, Any]]) -> str:
+    """Fallback: format MI responses via controller."""
+    return controller.format(responses)
 
 
 def register_gdb_tools(mcp):
@@ -38,11 +39,7 @@ def register_gdb_tools(mcp):
         """
         manager = ctx.request_context.lifespan_context["gdb"]
         session_id, output = await manager.create_session(executable, args, working_dir)
-        return json.dumps({
-            "session_id": session_id,
-            "status": "started",
-            "details": output,
-        })
+        return fmt.fmt_session_start("GDB", session_id, output)
 
     @mcp.tool()
     async def gdb_end_session(session_id: str, ctx: Context = None) -> str:
@@ -53,7 +50,7 @@ def register_gdb_tools(mcp):
         """
         manager = ctx.request_context.lifespan_context["gdb"]
         await manager.destroy_session(session_id)
-        return json.dumps({"session_id": session_id, "status": "ended"})
+        return fmt.fmt_session_end("GDB", session_id)
 
     @mcp.tool()
     async def gdb_run(
@@ -75,7 +72,7 @@ def register_gdb_tools(mcp):
         else:
             responses = await ctrl.send_command("-exec-run")
 
-        return _fmt(ctrl, responses)
+        return _raw_fmt(ctrl, responses)
 
     @mcp.tool()
     async def gdb_set_breakpoint(
@@ -104,13 +101,13 @@ def register_gdb_tools(mcp):
 
         if isinstance(payload, dict) and "bkpt" in payload:
             bkpt = payload["bkpt"]
-            return json.dumps({
+            return fmt.fmt_breakpoint({
                 "breakpoint_id": bkpt.get("number"),
                 "file": bkpt.get("file", ""),
                 "line": bkpt.get("line", ""),
                 "function": bkpt.get("func", ""),
             })
-        return _fmt(ctrl, responses)
+        return _raw_fmt(ctrl, responses)
 
     @mcp.tool()
     async def gdb_delete_breakpoint(
@@ -127,7 +124,7 @@ def register_gdb_tools(mcp):
         manager = ctx.request_context.lifespan_context["gdb"]
         ctrl = manager.get_session(session_id)
         responses = await ctrl.send_command(f"-break-delete {breakpoint_id}")
-        return _fmt(ctrl, responses)
+        return f"Breakpoint #{breakpoint_id} deleted."
 
     @mcp.tool()
     async def gdb_list_breakpoints(session_id: str, ctx: Context = None) -> str:
@@ -143,20 +140,18 @@ def register_gdb_tools(mcp):
 
         if isinstance(payload, dict) and "BreakpointTable" in payload:
             table = payload["BreakpointTable"]
-            breakpoints = table.get("body", [])
-            result = []
-            for bp in breakpoints:
-                result.append({
+            breakpoints = []
+            for bp in table.get("body", []):
+                breakpoints.append({
                     "id": bp.get("number"),
-                    "type": bp.get("type"),
                     "enabled": bp.get("enabled"),
                     "location": f"{bp.get('file', '?')}:{bp.get('line', '?')}",
                     "function": bp.get("func", ""),
                     "condition": bp.get("cond", ""),
                     "hit_count": bp.get("times", "0"),
                 })
-            return json.dumps(result, indent=2)
-        return _fmt(ctrl, responses)
+            return fmt.fmt_breakpoint_list(breakpoints)
+        return _raw_fmt(ctrl, responses)
 
     @mcp.tool()
     async def gdb_continue(session_id: str, ctx: Context = None) -> str:
@@ -168,7 +163,7 @@ def register_gdb_tools(mcp):
         manager = ctx.request_context.lifespan_context["gdb"]
         ctrl = manager.get_session(session_id)
         responses = await ctrl.send_command("-exec-continue")
-        return _fmt(ctrl, responses)
+        return _raw_fmt(ctrl, responses)
 
     @mcp.tool()
     async def gdb_step(
@@ -195,7 +190,7 @@ def register_gdb_tools(mcp):
             return f"Invalid step mode: {mode}. Use 'into', 'over', or 'out'."
 
         responses = await ctrl.send_command(cmd)
-        return _fmt(ctrl, responses)
+        return _raw_fmt(ctrl, responses)
 
     @mcp.tool()
     async def gdb_backtrace(
@@ -215,19 +210,18 @@ def register_gdb_tools(mcp):
         payload = _payload(responses)
 
         if isinstance(payload, dict) and "stack" in payload:
-            frames = payload["stack"]
-            result = []
-            for frame_entry in frames:
+            frames = []
+            for frame_entry in payload["stack"]:
                 frame = frame_entry.get("frame", frame_entry) if isinstance(frame_entry, dict) else frame_entry
-                result.append({
+                frames.append({
                     "level": frame.get("level"),
                     "function": frame.get("func", "??"),
                     "file": frame.get("file", ""),
                     "line": frame.get("line", ""),
                     "address": frame.get("addr", ""),
                 })
-            return json.dumps(result, indent=2)
-        return _fmt(ctrl, responses)
+            return fmt.fmt_backtrace(frames)
+        return _raw_fmt(ctrl, responses)
 
     @mcp.tool()
     async def gdb_list_variables(
@@ -251,16 +245,15 @@ def register_gdb_tools(mcp):
         payload = _payload(responses)
 
         if isinstance(payload, dict) and "variables" in payload:
-            variables = payload["variables"]
-            result = []
-            for var in variables:
-                result.append({
+            variables = []
+            for var in payload["variables"]:
+                variables.append({
                     "name": var.get("name"),
                     "type": var.get("type", ""),
                     "value": var.get("value", ""),
                 })
-            return json.dumps(result, indent=2)
-        return _fmt(ctrl, responses)
+            return fmt.fmt_variables(variables)
+        return _raw_fmt(ctrl, responses)
 
     @mcp.tool()
     async def gdb_evaluate(
@@ -280,8 +273,8 @@ def register_gdb_tools(mcp):
         payload = _payload(responses)
 
         if isinstance(payload, dict) and "value" in payload:
-            return payload["value"]
-        return _fmt(ctrl, responses)
+            return fmt.fmt_evaluate(expression, payload["value"])
+        return _raw_fmt(ctrl, responses)
 
     @mcp.tool()
     async def gdb_read_memory(
@@ -303,16 +296,15 @@ def register_gdb_tools(mcp):
         payload = _payload(responses)
 
         if isinstance(payload, dict) and "memory" in payload:
-            memory = payload["memory"]
-            result = []
-            for block in memory:
-                result.append({
+            blocks = []
+            for block in payload["memory"]:
+                blocks.append({
                     "begin": block.get("begin"),
                     "end": block.get("end"),
                     "contents": block.get("contents"),
                 })
-            return json.dumps(result, indent=2)
-        return _fmt(ctrl, responses)
+            return fmt.fmt_memory(blocks)
+        return _raw_fmt(ctrl, responses)
 
     @mcp.tool()
     async def gdb_thread_info(session_id: str, ctx: Context = None) -> str:
@@ -327,11 +319,10 @@ def register_gdb_tools(mcp):
         payload = _payload(responses)
 
         if isinstance(payload, dict) and "threads" in payload:
-            threads = payload["threads"]
-            result = []
-            for t in threads:
+            threads = []
+            for t in payload["threads"]:
                 frame = t.get("frame", {})
-                result.append({
+                threads.append({
                     "id": t.get("id"),
                     "name": t.get("name", ""),
                     "state": t.get("state", ""),
@@ -339,8 +330,8 @@ def register_gdb_tools(mcp):
                     "file": frame.get("file", ""),
                     "line": frame.get("line", ""),
                 })
-            return json.dumps(result, indent=2)
-        return _fmt(ctrl, responses)
+            return fmt.fmt_threads(threads)
+        return _raw_fmt(ctrl, responses)
 
     @mcp.tool()
     async def gdb_raw_command(
@@ -359,4 +350,4 @@ def register_gdb_tools(mcp):
         manager = ctx.request_context.lifespan_context["gdb"]
         ctrl = manager.get_session(session_id)
         responses = await ctrl.send_raw_command(command)
-        return _fmt(ctrl, responses)
+        return _raw_fmt(ctrl, responses)
