@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "cpp-debug": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["-m", "cpp_debug_mcp"],
+      "env": {
+        "GDB_PATH": "gdb",
+        "CLANGD_PATH": "clangd"
+      }
+    }
+  }
+}

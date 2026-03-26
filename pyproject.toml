@@ -1,0 +1,26 @@
+[project]
+name = "cpp-debug-mcp"
+version = "0.1.0"
+description = "Claude Code MCP server for C++ debugging with GDB and clangd"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.0",
+    "pygdbmi>=0.11",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
