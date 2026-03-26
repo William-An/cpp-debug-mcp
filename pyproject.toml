@@ -1,6 +1,6 @@
 [project]
 name = "cpp-debug-mcp"
-version = "0.1.1"
+version = "0.2.0"
 description = "Claude Code MCP server for C++ debugging with GDB and clangd"
 requires-python = ">=3.10"
 license = "MIT"
@@ -22,6 +22,9 @@ dependencies = [
     "fastmcp>=2.0",
     "pygdbmi>=0.11",
 ]
+
+[project.scripts]
+cpp-debug-mcp = "cpp_debug_mcp.server:mcp.run"
 
 [project.urls]
 Homepage = "https://github.com/William-An/cpp-debug-mcp"
